@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RSBSA Farmer Registry Database</title>
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #fcfcfb;
+    color: #0b0b0b;
+    margin: 0;
+    padding: 2rem;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
+  h2 { font-size: 17px; font-weight: 700; margin: 32px 0 8px; }
+  p.sub { font-size: 13px; color: #52514e; margin: 0 0 16px; }
+  .banner {
+    background: #fff7e6; border: 1px solid #f0d38a; border-radius: 8px;
+    padding: 10px 14px; font-size: 13px; color: #6b4f0a; margin-bottom: 20px;
+  }
+  textarea {
+    width: 100%; height: 160px; box-sizing: border-box;
+    font-family: 'Courier New', monospace; font-size: 12px;
+    padding: 12px; border: 1px solid #d3d1c7; border-radius: 6px; resize: vertical;
+  }
+  .controls { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  button {
+    background: #0c447c; color: #fff; border: none; padding: 9px 16px;
+    border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: #0a3a68; }
+  button.secondary { background: #898781; }
+  button.secondary:hover { background: #6f6d68; }
+  button.danger { background: #b3261e; }
+  button.danger:hover { background: #8f1e18; }
+  button:disabled { background: #c9c8c2; cursor: not-allowed; }
+  #importStatus { font-size: 13px; margin-top: 8px; }
+  .error { color: #b3261e; }
+  .success { color: #1b7a3d; }
+  .muted { color: #898781; }
+  input[type=file] { display: none; }
+  input[type=text], select {
+    font-family: Arial, Helvetica, sans-serif; font-size: 13px;
+    padding: 7px 9px; border: 1px solid #d3d1c7; border-radius: 6px; box-sizing: border-box;
+  }
+  .filter-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 10px 0; }
+  .filter-grid label { font-size: 11px; color: #52514e; display: block; margin-bottom: 3px; }
+  .filter-grid select, .filter-grid input { width: 100%; }
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 12px 0 24px; }
+  .stat-card { background: #f7f6f2; border-radius: 8px; padding: 14px 16px; }
+  .stat-card .label { font-size: 12px; color: #52514e; margin-bottom: 4px; }
+  .stat-card .value { font-size: 20px; font-weight: 700; }
+  .chart-container {
+    position: relative; width: 100%; background: #fff;
+    border: 1px solid #e1e0d9; border-radius: 8px; padding: 16px; box-sizing: border-box;
+    margin-bottom: 24px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 12px; }
+  thead tr { background: #0c447c; color: #fff; }
+  th, td { padding: 5px 7px; white-space: nowrap; }
+  th { text-align: left; position: sticky; top: 0; }
+  th.num, td.num { text-align: right; }
+  td { border-bottom: 1px solid #e1e0d9; }
+  .table-scroll { overflow-x: auto; border: 1px solid #e1e0d9; border-radius: 8px; }
+  .pager { display: flex; gap: 10px; align-items: center; margin-top: 10px; font-size: 13px; }
+  .empty-state { padding: 30px; text-align: center; color: #898781; border: 1px dashed #d3d1c7; border-radius: 8px; }
+  .legend { display: flex; gap: 20px; margin-bottom: 12px; font-size: 13px; color: #52514e; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+  hr.divider { border: none; border-top: 2px solid #e1e0d9; margin: 40px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>RSBSA farmer registry database</h1>
+  <p class="sub">Import farmer-level records, filter by location or crop, and see verification coverage at a glance.</p>
+  <div class="banner">
+    Records are stored in this browser's IndexedDB, tied to this file — they'll persist next time you reopen it in the same browser on this computer, but won't follow you elsewhere. Use <strong>Export CSV</strong> to back up or move data.
+  </div>
+
+  <h2 style="margin-top:0;">Import records</h2>
+  <p class="sub">Paste directly from Excel (select your header row + data, copy, paste below), or upload a CSV file. Expected columns: rsbsa_no, control_no, first_name, middle_name, last_name, ext_name, farmer_address_bgy, farmer_address_mun, farmer_address_prv, birthday, gender, contact_num, cropname, crop_area, verified_area(for_testing), farmer, farmworker, fisherfolk, agency, farm_type, date_created, kyc_updated, parcel_updated — in any order, as long as the header row is included.</p>
+  <textarea id="pasteInput" placeholder="Paste header row + data rows here, tab-separated (straight from Excel)..."></textarea>
+  <div class="controls">
+    <button onclick="importFromTextarea()">Import pasted data</button>
+    <button class="secondary" onclick="document.getElementById('csvFile').click()">Upload CSV file</button>
+    <input type="file" id="csvFile" accept=".csv,text/csv,.tsv,text/tab-separated-values" onchange="importFromFile(event)">
+    <button class="secondary" onclick="document.getElementById('pasteInput').value=''">Clear box</button>
+  </div>
+  <div id="importStatus"></div>
+
+  <hr class="divider">
+
+  <h2 style="margin-top:0;">Browse &amp; filter</h2>
+  <div class="filter-grid">
+    <div>
+      <label>Province</label>
+      <select id="fProvince" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Municipality</label>
+      <select id="fMunicipality" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Crop</label>
+      <select id="fCrop" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Verification status</label>
+      <select id="fVerified" onchange="applyFilters()">
+        <option value="">All</option>
+        <option value="verified">Has verified area &gt; 0</option>
+        <option value="unverified">Verified area = 0 / blank</option>
+        <option value="partial">Partially verified (&lt; crop area)</option>
+      </select>
+    </div>
+    <div>
+      <label>Gender</label>
+      <select id="fGender" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Agency</label>
+      <select id="fAgency" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Farm type</label>
+      <select id="fFarmType" onchange="applyFilters()"><option value="">All</option></select>
+    </div>
+    <div>
+      <label>Search name</label>
+      <input type="text" id="fName" placeholder="First, middle, or last name" oninput="applyFiltersDebounced()">
+    </div>
+  </div>
+  <div class="controls">
+    <button class="secondary" onclick="resetFilters()">Reset filters</button>
+    <button class="secondary" onclick="exportFilteredCSV()">Export filtered (CSV)</button>
+    <button class="danger" onclick="clearAllRecords()">Clear all records</button>
+  </div>
+
+  <h2>Overview</h2>
+  <div class="stat-grid" id="statGrid"></div>
+
+  <div class="chart-container" style="height:340px;">
+    <div class="legend">
+      <span><span class="swatch" style="background:#2a78d6;"></span>Crop area</span>
+      <span><span class="swatch" style="background:#eb6834;"></span>Verified area</span>
+    </div>
+    <canvas id="muniChart"></canvas>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const DB_NAME = 'rsbsaDB';
+const STORE = 'records';
+const SCHEMA = ['rsbsa_no','control_no','first_name','middle_name','last_name','ext_name',
+  'farmer_address_bgy','farmer_address_mun','farmer_address_prv','birthday','gender','contact_num',
+  'cropname','crop_area','verified_area(for_testing)','farmer','farmworker','fisherfolk','agency',
+  'farm_type','date_created','kyc_updated','parcel_updated'];
+const NUMERIC_FIELDS = ['crop_area','verified_area(for_testing)'];
+
+let db = null;
+let allRecords = [];
+let filtered = [];
+let page = 0;
+const PAGE_SIZE = 50;
+let chartInstance = null;
+let debounceTimer = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const _db = e.target.result;
+      if (!_db.objectStoreNames.contains(STORE)) {
+        _db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true });
+      }
+    };
+    req.onsuccess = (e) => resolve(e.target.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function getAllRecords() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const store = tx.objectStore(STORE);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function addRecords(records) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    records.forEach(r => store.add(r));
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function clearStore() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+function normalizeHeader(h) {
+  return h.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function parseDelimited(text) {
+  const lines = text.split(/\r?\n/).map(l => l).filter(l => l.trim().length > 0);
+  if (lines.length < 2) return { error: 'Need a header row plus at least one data row.' };
+
+  const tabCount = (lines[0].match(/\t/g) || []).length;
+  const useTab = tabCount > 0;
+
+  function splitLine(line) {
+    if (useTab) return line.split('\t');
+    // basic CSV split respecting quotes
+    const out = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        if (inQuotes && line[i+1] === '"') { cur += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (c === ',' && !inQuotes) {
+        out.push(cur); cur = '';
+      } else {
+        cur += c;
+      }
+    }
+    out.push(cur);
+    return out;
+  }
+
+  const headerCells = splitLine(lines[0]).map(normalizeHeader);
+  const colMap = {}; // schema field -> column index
+  SCHEMA.forEach(field => {
+    const idx = headerCells.indexOf(normalizeHeader(field));
+    if (idx !== -1) colMap[field] = idx;
+  });
+
+  const matchedCount = Object.keys(colMap).length;
+  if (matchedCount === 0) {
+    return { error: 'No recognized column headers found in the first row. Make sure the header row (rsbsa_no, control_no, first_name, ...) is included.' };
+  }
+
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitLine(lines[i]);
+    const rec = {};
+    SCHEMA.forEach(field => {
+      const idx = colMap[field];
+      let val = idx !== undefined ? (cells[idx] !== undefined ? cells[idx].trim() : '') : '';
+      if (NUMERIC_FIELDS.includes(field)) {
+        const num = parseFloat(String(val).replace(/,/g, ''));
+        val = isNaN(num) ? 0 : num;
+      }
+      rec[field] = val;
+    });
+    // skip fully blank rows
+    if (Object.values(rec).some(v => v !== '' && v !== 0)) records.push(rec);
+  }
+  return { records, matchedCount, totalCols: SCHEMA.length };
+}
+
+async function importFromTextarea() {
+  const text = document.getElementById('pasteInput').value;
+  const statusEl = document.getElementById('importStatus');
+  if (!text.trim()) {
+    statusEl.innerHTML = '<span class="error">Paste some data first.</span>';
+    return;
+  }
+  const result = parseDelimited(text);
+  if (result.error) {
+    statusEl.innerHTML = '<span class="error">' + result.error + '</span>';
+    return;
+  }
+  if (result.records.length === 0) {
+    statusEl.innerHTML = '<span class="error">No data rows found after the header.</span>';
+    return;
+  }
+  await addRecords(result.records);
+  statusEl.innerHTML = '<span class="success">Imported ' + result.records.length + ' record(s). Matched ' + result.matchedCount + ' of ' + result.totalCols + ' expected columns.</span>';
+  document.getElementById('pasteInput').value = '';
+  await refreshAll();
+}
+
+function importFromFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('importStatus');
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const result = parseDelimited(e.target.result);
+    if (result.error) {
+      statusEl.innerHTML = '<span class="error">' + result.error + '</span>';
+      return;
+    }
+    if (result.records.length === 0) {
+      statusEl.innerHTML = '<span class="error">No data rows found in the file.</span>';
+      return;
+    }
+    await addRecords(result.records);
+    statusEl.innerHTML = '<span class="success">Imported ' + result.records.length + ' record(s) from ' + file.name + '. Matched ' + result.matchedCount + ' of ' + result.totalCols + ' expected columns.</span>';
+    await refreshAll();
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+async function clearAllRecords() {
+  if (!confirm('Delete ALL records from this database? Export a CSV backup first if you are not sure.')) return;
+  await clearStore();
+  await refreshAll();
+}
+
+function populateFilterOptions() {
+  const provinces = new Set(), munis = new Set(), crops = new Set(), genders = new Set(), agencies = new Set(), farmTypes = new Set();
+  allRecords.forEach(r => {
+    if (r.farmer_address_prv) provinces.add(r.farmer_address_prv);
+    if (r.farmer_address_mun) munis.add(r.farmer_address_mun);
+    if (r.cropname) crops.add(r.cropname);
+    if (r.gender) genders.add(r.gender);
+    if (r.agency) agencies.add(r.agency);
+    if (r.farm_type) farmTypes.add(r.farm_type);
+  });
+  function fill(id, values) {
+    const el = document.getElementById(id);
+    const current = el.value;
+    el.innerHTML = '<option value="">All</option>' + [...values].sort().map(v => '<option value="' + v.replace(/"/g,'&quot;') + '">' + v + '</option>').join('');
+    if ([...values].includes(current)) el.value = current;
+  }
+  fill('fProvince', provinces);
+  fill('fMunicipality', munis);
+  fill('fCrop', crops);
+  fill('fGender', genders);
+  fill('fAgency', agencies);
+  fill('fFarmType', farmTypes);
+}
+
+function resetFilters() {
+  ['fProvince','fMunicipality','fCrop','fVerified','fGender','fAgency','fFarmType'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fName').value = '';
+  applyFilters();
+}
+
+function applyFiltersDebounced() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(applyFilters, 250);
+}
+
+function applyFilters() {
+  const prov = document.getElementById('fProvince').value;
+  const muni = document.getElementById('fMunicipality').value;
+  const crop = document.getElementById('fCrop').value;
+  const verified = document.getElementById('fVerified').value;
+  const gender = document.getElementById('fGender').value;
+  const agency = document.getElementById('fAgency').value;
+  const farmType = document.getElementById('fFarmType').value;
+  const nameQuery = document.getElementById('fName').value.trim().toLowerCase();
+
+  filtered = allRecords.filter(r => {
+    if (prov && r.farmer_address_prv !== prov) return false;
+    if (muni && r.farmer_address_mun !== muni) return false;
+    if (crop && r.cropname !== crop) return false;
+    if (gender && r.gender !== gender) return false;
+    if (agency && r.agency !== agency) return false;
+    if (farmType && r.farm_type !== farmType) return false;
+    if (verified === 'verified' && !(r['verified_area(for_testing)'] > 0)) return false;
+    if (verified === 'unverified' && !(!r['verified_area(for_testing)'] || r['verified_area(for_testing)'] === 0)) return false;
+    if (verified === 'partial' && !(r['verified_area(for_testing)'] > 0 && r['verified_area(for_testing)'] < r.crop_area)) return false;
+    if (nameQuery) {
+      const full = (r.first_name + ' ' + r.middle_name + ' ' + r.last_name + ' ' + r.ext_name).toLowerCase();
+      if (!full.includes(nameQuery)) return false;
+    }
+    return true;
+  });
+
+  page = 0;
+  renderStats();
+  renderChart();
+  renderTable();
+}
+
+function renderStats() {
+  const totalCrop = filtered.reduce((s, r) => s + (r.crop_area || 0), 0);
+  const totalVerified = filtered.reduce((s, r) => s + (r['verified_area(for_testing)'] || 0), 0);
+  const rate = totalCrop > 0 ? (totalVerified / totalCrop * 100) : 0;
+  const statGrid = document.getElementById('statGrid');
+  statGrid.innerHTML = '';
+  [
+    ['Records shown', filtered.length.toLocaleString()],
+    ['Total crop area', totalCrop.toLocaleString(undefined, {maximumFractionDigits: 1})],
+    ['Total verified area', totalVerified.toLocaleString(undefined, {maximumFractionDigits: 1})],
+    ['Verification rate', rate.toFixed(1) + '%']
+  ].forEach(([label, value]) => {
+    const div = document.createElement('div');
+    div.className = 'stat-card';
+    div.innerHTML = '<div class="label">' + label + '</div><div class="value">' + value + '</div>';
+    statGrid.appendChild(div);
+  });
+}
+
+function renderChart() {
+  const byMuni = {};
+  filtered.forEach(r => {
+    const key = r.farmer_address_mun || '(blank)';
+    if (!byMuni[key]) byMuni[key] = { crop: 0, verified: 0 };
+    byMuni[key].crop += r.crop_area || 0;
+    byMuni[key].verified += r['verified_area(for_testing)'] || 0;
+  });
+  const entries = Object.entries(byMuni).sort((a, b) => b[1].crop - a[1].crop).slice(0, 20);
+
+  if (chartInstance) chartInstance.destroy();
+  if (entries.length === 0) return;
+  chartInstance = new Chart(document.getElementById('muniChart'), {
+    type: 'bar',
+    data: {
+      labels: entries.map(e => e[0]),
+      datasets: [
+        { label: 'Crop area', data: entries.map(e => e[1].crop), backgroundColor: '#2a78d6', borderRadius: 3 },
+        { label: 'Verified area', data: entries.map(e => e[1].verified), backgroundColor: '#eb6834', borderRadius: 3 }
+      ]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.x.toLocaleString(undefined, {maximumFractionDigits: 1}) } } },
+      scales: {
+        x: { grid: { color: '#e1e0d9' }, ticks: { color: '#898781' } },
+        y: { grid: { display: false }, ticks: { color: '#52514e', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function renderTable() {
+  const container = document.getElementById('results');
+  if (allRecords.length === 0) {
+    container.innerHTML = '<div class="empty-state">No records yet. Import data above to get started.</div>';
+    return;
+  }
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="empty-state">No records match the current filters.</div>';
+    return;
+  }
+
+  const start = page * PAGE_SIZE;
+  const pageRows = filtered.slice(start, start + PAGE_SIZE);
+  const cols = ['control_no','first_name','last_name','farmer_address_mun','farmer_address_prv','cropname','crop_area','verified_area(for_testing)','gender','farm_type'];
+  const labels = ['Control No','First Name','Last Name','Municipality','Province','Crop','Crop Area','Verified Area','Gender','Farm Type'];
+
+  let html = '<h2>Records (' + filtered.length.toLocaleString() + ')</h2><div class="table-scroll"><table><thead><tr>';
+  labels.forEach(l => html += '<th>' + l + '</th>');
+  html += '</tr></thead><tbody>';
+  pageRows.forEach((r, i) => {
+    html += '<tr style="background:' + (i % 2 === 0 ? '#fff' : '#f7f6f2') + '">';
+    cols.forEach(c => {
+      const isNum = NUMERIC_FIELDS.includes(c);
+      const val = r[c];
+      html += '<td class="' + (isNum ? 'num' : '') + '">' + (isNum ? Number(val).toLocaleString(undefined,{maximumFractionDigits:2}) : (val || '')) + '</td>';
+    });
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  html += '<div class="pager">' +
+    '<button class="secondary" onclick="goPage(-1)" ' + (page === 0 ? 'disabled' : '') + '>Previous</button>' +
+    '<span>Page ' + (page + 1) + ' of ' + totalPages + '</span>' +
+    '<button class="secondary" onclick="goPage(1)" ' + (page >= totalPages - 1 ? 'disabled' : '') + '>Next</button>' +
+    '</div>';
+
+  container.innerHTML = html;
+}
+
+function goPage(delta) {
+  page += delta;
+  renderTable();
+}
+
+function exportFilteredCSV() {
+  if (filtered.length === 0) { alert('No records to export.'); return; }
+  const headerRow = SCHEMA.map(f => '"' + f.replace(/"/g,'""') + '"').join(',');
+  const rows = filtered.map(r => SCHEMA.map(f => {
+    const v = r[f] === undefined ? '' : r[f];
+    return '"' + String(v).replace(/"/g,'""') + '"';
+  }).join(','));
+  const csv = [headerRow, ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'rsbsa_records_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function refreshAll() {
+  allRecords = await getAllRecords();
+  populateFilterOptions();
+  applyFilters();
+}
+
+(async function init() {
+  db = await openDB();
+  await refreshAll();
+})();
+</script>
+</body>
+</html>
